@@ -1,0 +1,16 @@
+{
+  "name": "ward-notebook",
+  "version": "1.0.0",
+  "private": true,
+  "description": "간호관리자 업무 수첩 - 근무표/휴가제도/비상연락망/메모/일정 안드로이드 앱",
+  "scripts": {
+    "sync": "cap sync android"
+  },
+  "dependencies": {
+    "@capacitor/android": "^6.1.2",
+    "@capacitor/core": "^6.1.2"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^6.1.2"
+  }
+}

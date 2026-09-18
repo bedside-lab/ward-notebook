@@ -1,0 +1,9 @@
+{
+  "appId": "com.bedsidelab.wardnotebook",
+  "appName": "간호관리자 업무 수첩",
+  "webDir": "www",
+  "bundledWebRuntime": false,
+  "android": {
+    "allowMixedContent": false
+  }
+}
