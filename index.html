@@ -779,18 +779,21 @@ function renderStaffSearch(){
 }
 function renderTodaySummaryInto(elId){
   const today = todayIso();
-  const counts = {};
   const namesByCode = {};
   state.schedules.forEach(s => s.employees.forEach(e => {
-    const code = (e.shifts[today]||'').toUpperCase();
-    if(!code) return;
-    counts[code] = (counts[code]||0)+1;
-    (namesByCode[code] = namesByCode[code]||[]).push(e.name);
+    const raw = (e.shifts[today]||'').toUpperCase();
+    if(!raw) return;
+    let group = raw, label = e.name;
+    if(raw==='P'){ group='D'; label = e.name+'(P)'; }
+    else if(raw.startsWith('D')){ group='D'; }
+    else if(raw.startsWith('E')){ group='E'; }
+    else if(raw.startsWith('N')){ group='N'; }
+    (namesByCode[group] = namesByCode[group]||[]).push(label);
   }));
   const SHIFT_LABEL = { D:'Day', E:'Evening', N:'Night', O:'Off' };
   const el = document.getElementById(elId);
-  const keys = Object.keys(counts);
-  if(keys.length===0){
+  const hasAny = Object.keys(namesByCode).length > 0;
+  if(!hasAny){
     el.innerHTML = `<p class="muted" style="margin-top:8px;">오늘 날짜의 근무표가 아직 없어요.</p>`;
     return;
   }
