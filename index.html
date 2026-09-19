@@ -1452,11 +1452,15 @@ function handleFileGeneric(evt, forcedCategory){
     const base64 = e.target.result.split(',')[1];
     pendingFile = { base64, mimeType: file.type, name: file.name, forcedCategory };
     if(forcedCategory){
+      // 같은 카테고리(비상연락망/재난연락망)에 이미 파일이 있으면 새로 올린 파일로 교체한다
+      const old = state.dutyFiles.filter(f=>f.category===forcedCategory);
+      for(const o of old){ await idbDelete(o.id).catch(()=>{}); }
+      state.dutyFiles = state.dutyFiles.filter(f=>f.category!==forcedCategory);
       const id = 'df_'+Date.now();
       await idbPut(id, { base64: pendingFile.base64, mimeType: pendingFile.mimeType });
       state.dutyFiles.push({ id, displayName: file.name, category: forcedCategory, mimeType: file.type, addedAt: Date.now() });
       saveStore();
-      showToast('파일을 저장했어요.');
+      showToast(old.length ? '파일을 새 버전으로 갱신했어요.' : '파일을 저장했어요.');
       if(forcedCategory==='__disaster__') renderDisasterContactFiles();
       else if(forcedCategory==='__contacts_general__') renderGeneralContactFiles();
     } else {
@@ -1470,15 +1474,19 @@ function handleFileGeneric(evt, forcedCategory){
 }
 async function confirmDutyFile(){
   if(!pendingFile) return;
-  const id = 'df_'+Date.now();
-  await idbPut(id, { base64: pendingFile.base64, mimeType: pendingFile.mimeType });
   const displayName = document.getElementById('dutyDisplayNameInput').value.trim() || pendingFile.name;
   const category = document.getElementById('dutyCategorySelect').value;
+  // 같은 카테고리에 이미 파일이 있으면 새로 올린 파일로 교체한다
+  const old = state.dutyFiles.filter(f=>f.category===category);
+  for(const o of old){ await idbDelete(o.id).catch(()=>{}); }
+  state.dutyFiles = state.dutyFiles.filter(f=>f.category!==category);
+  const id = 'df_'+Date.now();
+  await idbPut(id, { base64: pendingFile.base64, mimeType: pendingFile.mimeType });
   state.dutyFiles.push({ id, displayName, category, mimeType: pendingFile.mimeType, addedAt: Date.now() });
   saveStore();
   closeSheet('dutyCategoryOverlay');
   pendingFile = null;
-  showToast('파일을 저장했어요.');
+  showToast(old.length ? '파일을 새 버전으로 갱신했어요.' : '파일을 저장했어요.');
   renderDuty();
 }
 function fileEmoji(mime, name){
