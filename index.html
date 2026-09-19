@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="간호관리자 업무 수첩">
@@ -622,10 +622,18 @@ document.querySelectorAll('.sheet-overlay').forEach(ov=> ov.addEventListener('cl
 // 일부 브라우저/웹뷰 환경(특히 홈 화면에 추가한 PWA)에서는 window.confirm이 동작하지 않을 수 있어
 // 자체 확인 모달을 사용한다.
 let _confirmCallback = null;
-function showConfirm(message, onConfirm){
+function showConfirm(message, onConfirm, okLabel, okColor){
   document.getElementById('confirmMessage').textContent = message;
+  const okBtn = document.getElementById('confirmOkBtn');
+  okBtn.textContent = okLabel || '삭제';
+  okBtn.style.background = okColor || 'var(--danger)';
   _confirmCallback = onConfirm;
   openSheet('confirmOverlay');
+}
+function confirmCall(number){
+  showConfirm(`${number} 로 전화할까요?`, ()=>{
+    window.location.href = 'tel:' + number;
+  }, '전화', 'var(--blue)');
 }
 document.getElementById('confirmOkBtn').addEventListener('click', function(){
   closeSheet('confirmOverlay');
@@ -1153,10 +1161,28 @@ function openDateDetail(date){
 }
 
 /* ============ SCHEDULE: open original excel file ============ */
-async function openScheduleExcel(){
+function openScheduleExcel(){
   const sched = state.schedules.find(s=>s.id===activeScheduleId);
-  if(!sched || !sched.fileBlobKey){ showToast('원본 엑셀 파일이 저장되어 있지 않아요.'); return; }
-  await showFilePreview(sched.fileBlobKey, sched.sourceFilename);
+  if(!sched){ showToast('근무표가 없어요.'); return; }
+  document.getElementById('filePreviewTitle').textContent = `${sched.year}년 ${sched.month}월 전체 근무표`;
+  const body = document.getElementById('filePreviewBody');
+  document.getElementById('filePreviewOverlay').classList.add('open');
+  renderScheduleTablePreview(sched, body);
+}
+function renderScheduleTablePreview(sched, container){
+  const dates = new Set();
+  sched.employees.forEach(e=>Object.keys(e.shifts).forEach(d=>dates.add(d)));
+  const sortedDates = [...dates].sort();
+  const names = [...sched.employees].sort((a,b)=>a.name.localeCompare(b.name,'ko'));
+  let html = '<div class="table-scroll"><table><tr><th class="name-cell">이름</th>' + sortedDates.map(d=>`<th>${parseInt(d.slice(-2),10)}</th>`).join('') + '</tr>';
+  names.forEach(emp=>{
+    html += `<tr><td class="name-cell">${escapeHtml(emp.name)}</td>` + sortedDates.map(d=>`<td><span class="cal-badge ${shiftClass(emp.shifts[d])}" style="display:inline-flex;">${escapeHtml(emp.shifts[d]||'-')}</span></td>`).join('') + '</tr>';
+  });
+  html += '</table></div>';
+  if(sched.fileBlobKey){
+    html += `<div style="text-align:center; margin-top:16px;"><button class="btn-text" onclick="openBlobFile('${sched.fileBlobKey}')">원본 엑셀 파일로 보기</button></div>`;
+  }
+  container.innerHTML = html;
 }
 
 /* ============ AGENDA (일정) ============ */
@@ -1329,7 +1355,7 @@ function renderContacts(){
         ${c.memo?`<div class="sub">${escapeHtml(c.memo)}</div>`:''}
         <div class="row-actions"><button class="btn-text" onclick="openContactSheet('${c.id}')">수정</button><button class="btn-danger-text" onclick="deleteContact('${c.id}')">삭제</button></div>
       </div>
-      <a class="call-btn" href="tel:${encodeURIComponent(c.phone)}">📞 전화</a>
+      <button class="call-btn" onclick="confirmCall('${escapeJs(c.phone)}')">📞 전화</button>
     </div>`).join('') + '</div>' : `<div class="empty-state"><span class="glyph">📞</span><p>등록된 비상연락망이 없어요.</p></div>`;
   out.innerHTML += `<div class="card"><div style="font-weight:800; font-size:14px;">📎 비상연락망 파일</div><p class="muted" style="margin-top:6px;">엑셀·한글(hwp) 파일로 정리된 연락망이 있다면 그대로 올려두고 필요할 때 바로 열어볼 수 있어요.</p>
     <button class="btn btn-outline btn-block" style="margin-top:10px;" onclick="document.getElementById('generalContactFileInput').click()">+ 파일 추가</button>
@@ -1387,7 +1413,7 @@ function renderDisasterContacts(){
         ${c.memo?`<div class="sub">${escapeHtml(c.memo)}</div>`:''}
         <div class="row-actions"><button class="btn-text" onclick="openDisasterContactSheet('${c.id}')">수정</button><button class="btn-danger-text" onclick="deleteDisasterContact('${c.id}')">삭제</button></div>
       </div>
-      <a class="call-btn" href="tel:${encodeURIComponent(c.phone)}">📞 전화</a>
+      <button class="call-btn" onclick="confirmCall('${escapeJs(c.phone)}')">📞 전화</button>
     </div>`).join('') + '</div>' : `<div class="empty-state"><span class="glyph">🚨</span><p>등록된 재난연락망이 없어요.</p></div>`;
   out.innerHTML += `<div class="card"><div style="font-weight:800; font-size:14px;">📎 재난연락망 파일</div><p class="muted" style="margin-top:6px;">엑셀·한글(hwp) 파일로 정리된 재난 연락망이 있다면 그대로 올려두고 필요할 때 바로 열어볼 수 있어요.</p>
     <button class="btn btn-outline btn-block" style="margin-top:10px;" onclick="document.getElementById('disasterContactFileInput').click()">+ 파일 추가</button>
@@ -1538,12 +1564,20 @@ function closeFilePreview(){
 function renderExcelPreview(base64, container){
   const wb = XLSX.read(base64, { type:'base64' });
   const sheet = wb.Sheets[wb.SheetNames[0]];
-  const rows = XLSX.utils.sheet_to_json(sheet, { header:1, raw:false, defval:'' });
-  let html = '<div class="table-scroll"><table>';
-  rows.forEach(row=>{
-    html += '<tr>' + row.map(c=>`<td style="border:1px solid var(--border); padding:6px 9px; white-space:nowrap; font-size:13.5px;">${escapeHtml(String(c))}</td>`).join('') + '</tr>';
+  const rows = XLSX.utils.sheet_to_json(sheet, { header:1, raw:false, defval:'' })
+    .map(r=>r.map(c=>String(c??'').trim()))
+    .filter(r=>r.some(c=>c!==''));
+  if(rows.length===0){ container.innerHTML = '<p class="muted" style="text-align:center; margin-top:30px;">시트에서 내용을 찾지 못했어요.</p>'; return; }
+
+  const phoneRe = /^0\d{1,2}-?\d{3,4}-?\d{4}$/;
+  const cellHtml = (c) => phoneRe.test(c.replace(/\s/g,'')) ? `<span onclick="confirmCall('${escapeJs(c)}')" style="color:var(--blue); font-weight:700; cursor:pointer;">${escapeHtml(c)}</span>` : escapeHtml(c);
+
+  let html = '<div style="border:1px solid var(--border); border-radius:14px; overflow:hidden; box-shadow:0 3px 12px rgba(27,42,65,.06);"><div class="table-scroll" style="margin:0; padding:0;"><table style="width:100%;">';
+  html += '<tr style="background:var(--surface-muted);">' + rows[0].map(c=>`<th style="text-align:left; padding:10px 12px; font-size:13px; font-weight:800; color:var(--ink); white-space:nowrap; border-bottom:1.5px solid var(--border);">${escapeHtml(c)}</th>`).join('') + '</tr>';
+  rows.slice(1).forEach((row,i)=>{
+    html += `<tr style="background:${i%2? 'var(--surface)':'var(--bg)'};">` + row.map(c=>`<td style="padding:9px 12px; font-size:13.5px; white-space:nowrap; border-bottom:1px solid var(--border);">${cellHtml(c)}</td>`).join('') + '</tr>';
   });
-  html += '</table></div>';
+  html += '</table></div></div>';
   container.innerHTML = html;
 }
 async function renderPdfPreview(base64, container){
