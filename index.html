@@ -15,6 +15,22 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+<script type="importmap">
+{
+  "imports": {
+    "@mdgate/core": "https://cdn.jsdelivr.net/npm/@mdgate/core@0.6.25/dist/index.js",
+    "@mdgate/utils": "https://cdn.jsdelivr.net/npm/@mdgate/utils@0.6.25/dist/index.js",
+    "@mdgate/document": "https://cdn.jsdelivr.net/npm/@mdgate/document@0.6.25/dist/index.js",
+    "@mdgate/containers": "https://cdn.jsdelivr.net/npm/@mdgate/containers@0.6.25/dist/index.js",
+    "@mdgate/hwp": "https://cdn.jsdelivr.net/npm/@mdgate/hwp@0.6.25/dist/index.js"
+  }
+}
+</script>
+<script type="module">
+  import { toMarkdown } from "@mdgate/hwp";
+  window.__hwpToMarkdown = toMarkdown;
+</script>
 <style>
   :root{
     --bg:#FAFBFC; --surface:#FFFFFF; --surface-muted:#F1F4F8; --border:#E7EBF0;
@@ -241,7 +257,7 @@
     <div class="quick-title" style="margin:14px 0 9px;">메뉴</div>
     <div class="quick-grid" id="menuGrid">
       <div class="quick-tile tile-indigo" onclick="switchTab('schedule')"><span class="tile-icon">📅</span><span class="label">근무표</span></div>
-      <div class="quick-tile tile-teal" onclick="openStaffSearch()"><span class="tile-icon">🔍</span><span class="label">직원 검색</span></div>
+      <div class="quick-tile tile-blue" onclick="openStaffSearch()"><span class="tile-icon">🔍</span><span class="label">근무검색</span></div>
       <div class="quick-tile tile-amber" onclick="switchTab('agenda')"><span class="tile-icon">🗓️</span><span class="label">일정</span></div>
       <div class="quick-tile tile-yellow" onclick="switchTab('memo')"><span class="tile-icon">📝</span><span class="label">메모</span></div>
       <div class="quick-tile tile-mint" onclick="openContactsQuick('__contacts_general__','contacts')"><span class="tile-icon">📞</span><span class="label">비상연락망</span></div>
@@ -261,13 +277,13 @@
     <div id="scheduleContent" style="display:none;">
       <div class="chip-row" id="monthChipRow"></div>
       <div style="display:flex; gap:10px; margin-top:14px;">
-        <button class="btn btn-outline" style="flex:1;" onclick="openScheduleExcel()">📄 엑셀로 전체 보기</button>
+        <button class="btn btn-outline" style="flex:1;" onclick="openScheduleExcel()">📄 전체 근무표 보기</button>
         <button class="btn btn-outline" style="flex:1;" onclick="openImport()">+ 새 근무표</button>
       </div>
     </div>
   </section>
 
-  <!-- ================= STAFF SEARCH (직원검색) ================= -->
+  <!-- ================= STAFF SEARCH (근무검색) ================= -->
   <section class="view" id="view-staffsearch">
     <div id="staffEmpty" class="empty-state" style="display:none;">
       <span class="glyph">🔍</span>
@@ -525,6 +541,16 @@
   </div>
 </div>
 
+<div class="sheet-overlay" id="filePreviewOverlay" style="align-items:stretch; z-index:60;">
+  <div style="background:var(--bg); width:100%; height:100%; display:flex; flex-direction:column;">
+    <div style="display:flex; align-items:center; justify-content:space-between; padding:calc(12px + env(safe-area-inset-top)) 18px 12px; border-bottom:1px solid var(--border); background:var(--surface);">
+      <span id="filePreviewTitle" style="font-weight:800; font-size:15px; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin-right:10px;"></span>
+      <button onclick="closeFilePreview()" style="background:var(--surface-muted); border:none; width:34px; height:34px; border-radius:50%; font-size:16px; color:var(--ink); flex-shrink:0;">✕</button>
+    </div>
+    <div id="filePreviewBody" style="flex:1; overflow:auto; padding:16px; padding-bottom:calc(24px + env(safe-area-inset-bottom));"></div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -640,7 +666,7 @@ function showView(name){
   document.getElementById('view-'+name).classList.add('active');
   document.getElementById('pageTitle').textContent = TAB_TITLES[name] || VIEW_TITLES[name] || '';
 }
-const VIEW_TITLES = { import:'엑셀 가져오기', employee:'직원별 근무', date:'날짜별 근무자', staffsearch:'직원 검색', contacts:'비상연락망', disaster:'재난연락망', duty:'복무관리', settings:'설정' };
+const VIEW_TITLES = { import:'엑셀 가져오기', employee:'직원별 근무', date:'날짜별 근무자', staffsearch:'근무검색', contacts:'비상연락망', disaster:'재난연락망', duty:'복무관리', settings:'설정' };
 
 function pushView(name, title){
   navStack.push(name);
@@ -672,7 +698,7 @@ function openMorePage(name){
 function openContactsQuick(category, fallbackPage){
   const files = state.dutyFiles.filter(f=>f.category===category);
   if(files.length===1){
-    openBlobFile(files[0].id, files[0].mimeType);
+    showFilePreview(files[0].id, files[0].displayName);
   } else {
     openMorePage(fallbackPage);
   }
@@ -680,7 +706,7 @@ function openContactsQuick(category, fallbackPage){
 function openDutyQuick(){
   const files = state.dutyFiles.filter(f=>f.category!=='__disaster__' && f.category!=='__contacts_general__');
   if(files.length===1){
-    openBlobFile(files[0].id, files[0].mimeType);
+    showFilePreview(files[0].id, files[0].displayName);
   } else {
     openMorePage('duty');
   }
@@ -726,7 +752,7 @@ function deleteSchedule(id){
     renderScheduleTab();
   });
 }
-/* ============ STAFF SEARCH (직원검색: 오늘의 근무 + 직원별 검색) ============ */
+/* ============ STAFF SEARCH (근무검색: 오늘의 근무 + 직원별 검색) ============ */
 function openStaffSearch(){
   pushView('staffsearch');
   renderStaffSearch();
@@ -768,9 +794,6 @@ function renderTodaySummaryInto(elId){
     el.innerHTML = `<p class="muted" style="margin-top:8px;">오늘 날짜의 근무표가 아직 없어요.</p>`;
     return;
   }
-  const countRow = `<div class="summary-grid">` + keys.map(k=>`
-    <div class="summary-item"><div class="summary-count">${counts[k]}명</div><div class="summary-code">${SHIFT_LABEL[k]||k}</div></div>
-  `).join('') + `</div>`;
   const nameGroups = ['D','E','N'].filter(k => namesByCode[k] && namesByCode[k].length).map(k => `
     <div style="margin-top:12px;">
       <div style="display:flex; align-items:center; gap:6px;">
@@ -781,7 +804,7 @@ function renderTodaySummaryInto(elId){
         ${namesByCode[k].sort((a,b)=>a.localeCompare(b,'ko')).map(n=>`<span style="background:var(--surface-muted); border-radius:999px; padding:5px 11px; font-size:13.5px;">${escapeHtml(n)}</span>`).join('')}
       </div>
     </div>`).join('');
-  el.innerHTML = countRow + nameGroups;
+  el.innerHTML = nameGroups || `<p class="muted" style="margin-top:8px;">오늘 근무 중인 D/E/N 근무자가 없어요.</p>`;
 }
 function renderStaffEmployeeList(){
   const sched = state.schedules.find(s=>s.id===activeScheduleId);
@@ -1130,7 +1153,7 @@ function openDateDetail(date){
 async function openScheduleExcel(){
   const sched = state.schedules.find(s=>s.id===activeScheduleId);
   if(!sched || !sched.fileBlobKey){ showToast('원본 엑셀 파일이 저장되어 있지 않아요.'); return; }
-  await openBlobFile(sched.fileBlobKey, sched.sourceMimeType);
+  await showFilePreview(sched.fileBlobKey, sched.sourceFilename);
 }
 
 /* ============ AGENDA (일정) ============ */
@@ -1457,7 +1480,8 @@ async function openBlobFile(id, mimeType){
   window.open(url, '_blank');
 }
 async function openFile(id){
-  await openBlobFile(id);
+  const meta = state.dutyFiles.find(f=>f.id===id);
+  await showFilePreview(id, meta ? meta.displayName : '');
 }
 function deleteFile(id){
   showConfirm('삭제할까요?', async ()=>{
@@ -1470,7 +1494,129 @@ function deleteFile(id){
   });
 }
 
+/* ============ 파일 미리보기 (전체화면) ============ */
+async function showFilePreview(id, displayName){
+  const blob = await idbGet(id);
+  if(!blob){ showToast('파일을 찾을 수 없어요.'); return; }
+  document.getElementById('filePreviewTitle').textContent = displayName || '';
+  const body = document.getElementById('filePreviewBody');
+  body.innerHTML = '<p class="muted" style="text-align:center; margin-top:40px;">불러오는 중...</p>';
+  document.getElementById('filePreviewOverlay').classList.add('open');
+
+  const mime = blob.mimeType || '';
+  const ext = (displayName||'').split('.').pop().toLowerCase();
+  const fallbackBtn = `<div style="text-align:center; padding:40px 20px;">
+      <p class="muted">이 파일 형식은 화면에서 바로 미리보기가 안 돼요.<br>아래 버튼으로 열어서 확인해주세요.</p>
+      <button class="btn btn-primary" style="margin-top:14px;" onclick="openBlobFile('${id}')">파일 열기</button>
+    </div>`;
+
+  try{
+    if(mime.includes('image') || ['jpg','jpeg','png','gif','webp'].includes(ext)){
+      body.innerHTML = `<img src="data:${mime||'image/jpeg'};base64,${blob.base64}" style="width:100%; border-radius:12px; display:block;">`;
+    } else if(mime.includes('pdf') || ext==='pdf'){
+      if(!window.pdfjsLib) throw new Error('pdfjs 없음');
+      await renderPdfPreview(blob.base64, body);
+    } else if(ext==='xlsx' || ext==='xls' || mime.includes('sheet') || mime.includes('excel')){
+      renderExcelPreview(blob.base64, body);
+    } else if(ext==='hwp' || ext==='hwpx'){
+      await renderHwpPreview(blob.base64, displayName, body, id);
+    } else {
+      body.innerHTML = fallbackBtn;
+    }
+  }catch(e){
+    console.error(e);
+    body.innerHTML = fallbackBtn;
+  }
+}
+function closeFilePreview(){
+  document.getElementById('filePreviewOverlay').classList.remove('open');
+  document.getElementById('filePreviewBody').innerHTML = '';
+}
+function renderExcelPreview(base64, container){
+  const wb = XLSX.read(base64, { type:'base64' });
+  const sheet = wb.Sheets[wb.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json(sheet, { header:1, raw:false, defval:'' });
+  let html = '<div class="table-scroll"><table>';
+  rows.forEach(row=>{
+    html += '<tr>' + row.map(c=>`<td style="border:1px solid var(--border); padding:6px 9px; white-space:nowrap; font-size:13.5px;">${escapeHtml(String(c))}</td>`).join('') + '</tr>';
+  });
+  html += '</table></div>';
+  container.innerHTML = html;
+}
+async function renderPdfPreview(base64, container){
+  const raw = atob(base64);
+  const bytes = new Uint8Array(raw.length);
+  for(let i=0;i<raw.length;i++) bytes[i] = raw.charCodeAt(i);
+  const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
+  container.innerHTML = '';
+  for(let p=1; p<=pdf.numPages; p++){
+    const page = await pdf.getPage(p);
+    const viewport = page.getViewport({ scale: 1.5 });
+    const canvas = document.createElement('canvas');
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+    canvas.style.width = '100%';
+    canvas.style.marginBottom = '14px';
+    canvas.style.borderRadius = '10px';
+    canvas.style.boxShadow = '0 4px 14px rgba(27,42,65,0.12)';
+    const ctx = canvas.getContext('2d');
+    await page.render({ canvasContext: ctx, viewport }).promise;
+    container.appendChild(canvas);
+  }
+}
+async function renderHwpPreview(base64, displayName, container, id){
+  if(!window.__hwpToMarkdown){
+    container.innerHTML = `<p class="muted" style="text-align:center; margin-top:30px;">한글 파일 변환기를 불러오는 중이에요. 잠시 후 다시 열어봐 주세요.</p>
+      <div style="text-align:center; margin-top:14px;"><button class="btn btn-primary" onclick="openBlobFile('${id}')">원본 파일 열기</button></div>`;
+    return;
+  }
+  const raw = atob(base64);
+  const bytes = new Uint8Array(raw.length);
+  for(let i=0;i<raw.length;i++) bytes[i] = raw.charCodeAt(i);
+  try{
+    const markdown = await window.__hwpToMarkdown(bytes, { path: displayName || 'file.hwpx' });
+    container.innerHTML = `<div style="background:var(--surface); border-radius:14px; padding:18px; box-shadow:0 3px 12px rgba(27,42,65,.06);">${simpleMarkdownToHtml(markdown)}</div>
+      <p class="muted" style="text-align:center; margin-top:14px;">글자만 옮겨온 미리보기예요. 원래 서식과 다를 수 있어요.</p>`;
+  }catch(e){
+    const msg = (e && e.code==='encrypted') ? '이 파일은 암호로 보호되어 있어 미리보기를 만들 수 없어요.' : '이 한글 파일은 미리보기로 변환하지 못했어요.';
+    container.innerHTML = `<div style="text-align:center; padding:40px 20px;">
+      <p class="muted">${msg}<br>아래 버튼으로 열어서 확인해주세요.</p>
+      <button class="btn btn-primary" style="margin-top:14px;" onclick="openBlobFile('${id}')">파일 열기</button>
+    </div>`;
+  }
+}
+function simpleMarkdownToHtml(md){
+  const lines = (md||'').split('\n');
+  let html = '', i = 0;
+  while(i < lines.length){
+    const line = lines[i];
+    if(/^\|.*\|$/.test(line.trim())){
+      const tableLines = [];
+      while(i<lines.length && /^\|.*\|$/.test(lines[i].trim())){ tableLines.push(lines[i].trim()); i++; }
+      const rows = tableLines.filter((l,idx)=> !(idx===1 && /^\|[\s\-:|]+\|$/.test(l)));
+      html += '<div class="table-scroll"><table>' + rows.map(r=>{
+        const cells = r.slice(1,-1).split('|').map(c=>c.trim());
+        return '<tr>' + cells.map(c=>`<td style="border:1px solid var(--border); padding:7px 10px; font-size:13.5px;">${escapeHtml(c)}</td>`).join('') + '</tr>';
+      }).join('') + '</table></div>';
+      continue;
+    }
+    if(/^#{1,6}\s/.test(line)){
+      const level = line.match(/^#+/)[0].length;
+      const text = line.replace(/^#{1,6}\s/,'');
+      html += `<h3 style="font-size:${Math.max(14,18-level)}px; margin:14px 0 6px;">${escapeHtml(text)}</h3>`;
+      i++; continue;
+    }
+    if(line.trim()===''){ i++; continue; }
+    html += `<p style="margin:0 0 12px; font-size:14.5px; line-height:1.7;">${escapeHtml(line)}</p>`;
+    i++;
+  }
+  return html || '<p class="muted">내용을 찾지 못했어요.</p>';
+}
+
 /* ============ init ============ */
+if(window.pdfjsLib){
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+}
 setHeaderVisible(false);
 renderHome();
 </script>
