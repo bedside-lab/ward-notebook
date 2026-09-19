@@ -240,14 +240,13 @@
 
     <div class="quick-title" style="margin:14px 0 9px;">메뉴</div>
     <div class="quick-grid" id="menuGrid">
-      <div class="quick-tile tile-blue" onclick="openImport()"><span class="tile-icon">📤</span><span class="label">엑셀 가져오기</span></div>
       <div class="quick-tile tile-indigo" onclick="switchTab('schedule')"><span class="tile-icon">📅</span><span class="label">근무표</span></div>
       <div class="quick-tile tile-teal" onclick="openStaffSearch()"><span class="tile-icon">🔍</span><span class="label">직원 검색</span></div>
       <div class="quick-tile tile-amber" onclick="switchTab('agenda')"><span class="tile-icon">🗓️</span><span class="label">일정</span></div>
       <div class="quick-tile tile-yellow" onclick="switchTab('memo')"><span class="tile-icon">📝</span><span class="label">메모</span></div>
-      <div class="quick-tile tile-mint" onclick="openMorePage('contacts')"><span class="tile-icon">📞</span><span class="label">비상연락망</span></div>
-      <div class="quick-tile tile-coral" onclick="openMorePage('disaster')"><span class="tile-icon">🚨</span><span class="label">재난연락망</span></div>
-      <div class="quick-tile tile-purple" onclick="openMorePage('duty')"><span class="tile-icon">📋</span><span class="label">복무관리</span></div>
+      <div class="quick-tile tile-mint" onclick="openContactsQuick('__contacts_general__','contacts')"><span class="tile-icon">📞</span><span class="label">비상연락망</span></div>
+      <div class="quick-tile tile-coral" onclick="openContactsQuick('__disaster__','disaster')"><span class="tile-icon">🚨</span><span class="label">재난연락망</span></div>
+      <div class="quick-tile tile-purple" onclick="openDutyQuick()"><span class="tile-icon">📋</span><span class="label">복무관리</span></div>
       <div class="quick-tile tile-slate" onclick="openMorePage('settings')"><span class="tile-icon">⚙️</span><span class="label">설정</span></div>
     </div>
   </section>
@@ -380,9 +379,9 @@
   <!-- ================= MORE ================= -->
   <section class="view" id="view-more">
     <div class="card" style="padding:4px 18px;">
-      <div class="employee-row" onclick="openMorePage('contacts')"><span>📞 &nbsp;비상연락망</span><span class="muted">›</span></div>
-      <div class="employee-row" onclick="openMorePage('disaster')"><span>🚨 &nbsp;재난연락망</span><span class="muted">›</span></div>
-      <div class="employee-row" onclick="openMorePage('duty')"><span>📋 &nbsp;복무관리</span><span class="muted">›</span></div>
+      <div class="employee-row" onclick="openContactsQuick('__contacts_general__','contacts')"><span>📞 &nbsp;비상연락망</span><span class="muted">›</span></div>
+      <div class="employee-row" onclick="openContactsQuick('__disaster__','disaster')"><span>🚨 &nbsp;재난연락망</span><span class="muted">›</span></div>
+      <div class="employee-row" onclick="openDutyQuick()"><span>📋 &nbsp;복무관리</span><span class="muted">›</span></div>
       <div class="employee-row" onclick="openMorePage('settings')"><span>⚙️ &nbsp;설정</span><span class="muted">›</span></div>
     </div>
   </section>
@@ -669,6 +668,22 @@ function openMorePage(name){
   if(name==='contacts') renderContacts();
   if(name==='disaster') renderDisasterContacts();
   if(name==='duty') renderDuty();
+}
+function openContactsQuick(category, fallbackPage){
+  const files = state.dutyFiles.filter(f=>f.category===category);
+  if(files.length===1){
+    openBlobFile(files[0].id, files[0].mimeType);
+  } else {
+    openMorePage(fallbackPage);
+  }
+}
+function openDutyQuick(){
+  const files = state.dutyFiles.filter(f=>f.category!=='__disaster__' && f.category!=='__contacts_general__');
+  if(files.length===1){
+    openBlobFile(files[0].id, files[0].mimeType);
+  } else {
+    openMorePage('duty');
+  }
 }
 
 /* ============ HOME ============ */
@@ -1379,8 +1394,8 @@ function handleFileGeneric(evt, forcedCategory){
       state.dutyFiles.push({ id, displayName: file.name, category: forcedCategory, mimeType: file.type, addedAt: Date.now() });
       saveStore();
       showToast('파일을 저장했어요.');
-      renderDisasterFiles();
-      renderGeneralContactFiles();
+      if(forcedCategory==='__disaster__') renderDisasterContactFiles();
+      else if(forcedCategory==='__contacts_general__') renderGeneralContactFiles();
     } else {
       document.getElementById('dutyDisplayNameInput').value = file.name;
       document.getElementById('dutyCategorySelect').value = '복무규정';
@@ -1450,7 +1465,8 @@ function deleteFile(id){
     await idbDelete(id);
     saveStore();
     renderDuty();
-    renderDisasterFiles();
+    renderGeneralContactFiles();
+    renderDisasterContactFiles();
   });
 }
 
