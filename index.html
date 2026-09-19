@@ -380,6 +380,13 @@
 
   <!-- ================= MEMO ================= -->
   <section class="view" id="view-memo">
+    <div class="card" style="padding:14px 16px 10px;">
+      <textarea id="memoQuickInput" placeholder="메모를 바로 입력하세요..." style="width:100%; border:none; outline:none; background:none; font-size:15px; min-height:64px; resize:vertical; font-family:inherit; color:var(--ink);" onblur="quickSaveMemo()"></textarea>
+      <div style="display:flex; justify-content:flex-end; gap:14px;">
+        <button class="btn-text" id="memoCancelBtn" style="display:none; color:var(--ink-soft);" onclick="cancelMemoEdit()">취소</button>
+        <button class="btn-text" id="memoSaveBtn" onclick="quickSaveMemo()">저장</button>
+      </div>
+    </div>
     <div class="search-bar">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
       <input id="memoSearch" placeholder="메모 검색" oninput="renderMemo()">
@@ -389,7 +396,6 @@
       <span class="glyph">📝</span>
       <p>등록된 메모가 없어요.</p>
     </div>
-    <button class="btn btn-primary btn-block" style="margin-top:14px;" onclick="openMemoSheet()">+ 메모 추가</button>
   </section>
 
   <!-- ================= MORE ================= -->
@@ -462,23 +468,6 @@
     <div class="sheet-actions">
       <button class="btn btn-outline" onclick="closeSheet('eventSheetOverlay')">취소</button>
       <button class="btn btn-primary" onclick="saveEvent()">저장</button>
-    </div>
-  </div>
-</div>
-
-<div class="sheet-overlay" id="memoSheetOverlay">
-  <div class="sheet">
-    <div class="sheet-handle"></div>
-    <h3 id="memoSheetTitle">메모 추가</h3>
-    <div class="field"><label>제목 (선택)</label><input id="memoTitleInput"></div>
-    <div class="field"><label>내용</label><textarea id="memoContentInput"></textarea></div>
-    <div class="switch-row">
-      <span style="font-size:14.5px; font-weight:600;">⭐ 중요 메모로 표시</span>
-      <input type="checkbox" id="memoImportantInput" style="width:20px; height:20px;">
-    </div>
-    <div class="sheet-actions">
-      <button class="btn btn-outline" onclick="closeSheet('memoSheetOverlay')">취소</button>
-      <button class="btn btn-primary" onclick="saveMemo()">저장</button>
     </div>
   </div>
 </div>
@@ -1263,53 +1252,75 @@ function renderAgenda(){
   }).join('') + '</div>';
 }
 
-/* ============ MEMO ============ */
-function openMemoSheet(editId){
-  document.getElementById('memoSheetTitle').textContent = editId ? '메모 수정' : '메모 추가';
-  document.getElementById('memoSheetOverlay').dataset.editId = editId||'';
-  const item = editId ? state.memos.find(m=>m.id===editId) : null;
-  document.getElementById('memoTitleInput').value = item ? (item.title||'') : '';
-  document.getElementById('memoContentInput').value = item ? item.content : '';
-  document.getElementById('memoImportantInput').checked = item ? !!item.important : false;
-  openSheet('memoSheetOverlay');
-}
-function saveMemo(){
-  const title = document.getElementById('memoTitleInput').value.trim();
-  const content = document.getElementById('memoContentInput').value.trim();
-  const important = document.getElementById('memoImportantInput').checked;
-  if(!content){ showToast('내용을 입력해주세요.'); return; }
-  const editId = document.getElementById('memoSheetOverlay').dataset.editId;
-  if(editId){
-    const item = state.memos.find(m=>m.id===editId);
-    Object.assign(item, { title, content, important });
-  } else {
-    state.memos.unshift({ id:'mm_'+Date.now(), title, content, important, createdAt: Date.now() });
+/* ============ MEMO (위젯처럼 즉시 쓰고 바로 수정) ============ */
+let editingMemoId = null;
+function quickSaveMemo(){
+  const input = document.getElementById('memoQuickInput');
+  const content = input.value.trim();
+  if(!content){
+    if(editingMemoId) cancelMemoEdit();
+    return;
   }
-  saveStore(); closeSheet('memoSheetOverlay'); renderMemo(); showToast('저장했어요.');
+  if(editingMemoId){
+    const item = state.memos.find(m=>m.id===editingMemoId);
+    if(item){ item.content = content; item.updatedAt = Date.now(); }
+    editingMemoId = null;
+  } else {
+    state.memos.unshift({ id:'mm_'+Date.now(), content, important:false, createdAt: Date.now(), updatedAt: Date.now() });
+  }
+  saveStore();
+  input.value = '';
+  updateMemoInputMode();
+  renderMemo();
+}
+function editMemoInline(id){
+  const item = state.memos.find(m=>m.id===id);
+  if(!item) return;
+  editingMemoId = id;
+  const input = document.getElementById('memoQuickInput');
+  input.value = item.content;
+  input.focus();
+  updateMemoInputMode();
+}
+function cancelMemoEdit(){
+  editingMemoId = null;
+  document.getElementById('memoQuickInput').value = '';
+  updateMemoInputMode();
+}
+function updateMemoInputMode(){
+  document.getElementById('memoSaveBtn').textContent = editingMemoId ? '수정 완료' : '저장';
+  document.getElementById('memoCancelBtn').style.display = editingMemoId ? 'inline-flex' : 'none';
+}
+function toggleMemoImportant(id){
+  const item = state.memos.find(m=>m.id===id);
+  if(!item) return;
+  item.important = !item.important;
+  saveStore();
+  renderMemo();
 }
 function deleteMemo(id){
   showConfirm('삭제할까요?', ()=>{
+    if(editingMemoId===id) cancelMemoEdit();
     state.memos = state.memos.filter(m=>m.id!==id);
     saveStore(); renderMemo();
   });
 }
 function renderMemo(){
   const q = (document.getElementById('memoSearch').value||'').trim().toLowerCase();
-  const list = state.memos.filter(m=> (m.title||'').toLowerCase().includes(q) || m.content.toLowerCase().includes(q))
-    .sort((a,b)=> (b.important - a.important) || (b.createdAt - a.createdAt));
+  const list = state.memos.filter(m=> m.content.toLowerCase().includes(q))
+    .sort((a,b)=> (b.important - a.important) || (b.updatedAt - a.updatedAt));
   const out = document.getElementById('memoOutput');
   const empty = document.getElementById('memoEmpty');
   if(!list.length){ out.innerHTML=''; empty.style.display='block'; return; }
   empty.style.display='none';
   out.innerHTML = '<div class="card" style="padding:4px 18px;">' + list.map(m=>`
     <div class="list-row">
-      <div class="main">
-        <div class="title">${m.important?'<span class=\"star\">⭐</span>':''}${escapeHtml(m.title||'제목 없음')}</div>
-        <div class="sub">${escapeHtml(m.content)}</div>
-        <div class="row-actions">
-          <button class="btn-text" onclick="openMemoSheet('${m.id}')">수정</button>
-          <button class="btn-danger-text" onclick="deleteMemo('${m.id}')">삭제</button>
-        </div>
+      <div class="main" onclick="editMemoInline('${m.id}')" style="cursor:pointer;">
+        <div class="sub" style="font-size:14.5px; color:var(--ink); white-space:pre-wrap;">${escapeHtml(m.content)}</div>
+      </div>
+      <div style="display:flex; flex-direction:column; align-items:center; gap:6px;">
+        <button onclick="toggleMemoImportant('${m.id}')" style="background:none; border:none; font-size:17px; opacity:${m.important?1:0.3};">⭐</button>
+        <button class="btn-danger-text" onclick="deleteMemo('${m.id}')">삭제</button>
       </div>
     </div>`).join('') + '</div>';
 }
