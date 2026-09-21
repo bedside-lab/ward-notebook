@@ -1367,18 +1367,33 @@ function renderContacts(){
       </div>
       <button class="call-btn" onclick="confirmCall('${escapeJs(c.phone)}')">📞 전화</button>
     </div>`).join('') + '</div>' : `<div class="empty-state"><span class="glyph">📞</span><p>등록된 비상연락망이 없어요.</p></div>`;
-  out.innerHTML += `<div class="card"><div style="font-weight:800; font-size:14px;">📎 비상연락망 파일</div><p class="muted" style="margin-top:6px;">엑셀·한글(hwp) 파일로 정리된 연락망이 있다면 그대로 올려두고 필요할 때 바로 열어볼 수 있어요.</p>
-    <button class="btn btn-outline btn-block" style="margin-top:10px;" onclick="document.getElementById('generalContactFileInput').click()">+ 파일 추가</button>
+
+  const files = state.dutyFiles.filter(f=>f.category==='__contacts_general__');
+  out.innerHTML += `<div class="card">
+    <div style="display:flex; align-items:center; justify-content:space-between;">
+      <div style="font-weight:800; font-size:14px;">📎 비상연락망 파일</div>
+      ${files.length ? `<button class="btn-text" onclick="document.getElementById('generalContactFileInput').click()">파일 교체</button>` : ''}
+    </div>
+    ${files.length===0
+      ? `<p class="muted" style="margin-top:6px;">엑셀·한글(hwp) 파일로 정리된 연락망이 있다면 그대로 올려두고 필요할 때 바로 볼 수 있어요.</p>
+         <button class="btn btn-outline btn-block" style="margin-top:10px;" onclick="document.getElementById('generalContactFileInput').click()">+ 파일 추가</button>`
+      : `<div id="generalContactFileBody" style="margin-top:10px;"><p class="muted" style="text-align:center;">불러오는 중...</p></div>`}
     <input type="file" id="generalContactFileInput" accept=".xlsx,.xls,.hwp,.hwpx,.pdf,image/*" onchange="handleGeneralContactFile(event)">
-    <div id="generalContactFileList" style="margin-top:6px;"></div>
   </div>`;
   renderGeneralContactFiles();
 }
 async function renderGeneralContactFiles(){
-  const wrap = document.getElementById('generalContactFileList');
-  if(!wrap) return;
   const files = state.dutyFiles.filter(f=>f.category==='__contacts_general__');
-  wrap.innerHTML = files.map(f=>`<div class="file-row"><div class="file-icon">${fileEmoji(f.mimeType, f.displayName)}</div><div style="flex:1;"><div style="font-weight:600; font-size:14px;">${escapeHtml(f.displayName)}</div></div><button class="btn-text" onclick="openFile('${f.id}')">열기</button><button class="btn-danger-text" onclick="deleteFile('${f.id}')">삭제</button></div>`).join('');
+  if(files.length===0) return;
+  if(files.length>1){
+    const wrap = document.getElementById('generalContactFileBody');
+    if(wrap) wrap.innerHTML = files.map(f=>`<div class="file-row"><div class="file-icon">${fileEmoji(f.mimeType, f.displayName)}</div><div style="flex:1;"><div style="font-weight:600; font-size:14px;">${escapeHtml(f.displayName)}</div></div><button class="btn-text" onclick="openFile('${f.id}')">열기</button><button class="btn-danger-text" onclick="deleteFile('${f.id}')">삭제</button></div>`).join('');
+    return;
+  }
+  const body = document.getElementById('generalContactFileBody');
+  if(!body) return;
+  await renderFileContentInto(files[0].id, files[0].displayName, body);
+  body.innerHTML += `<div style="text-align:center; margin-top:14px;"><button class="btn-danger-text" onclick="deleteFile('${files[0].id}')">파일 삭제</button></div>`;
 }
 function handleGeneralContactFile(evt){ handleFileGeneric(evt, '__contacts_general__'); }
 
@@ -1425,18 +1440,33 @@ function renderDisasterContacts(){
       </div>
       <button class="call-btn" onclick="confirmCall('${escapeJs(c.phone)}')">📞 전화</button>
     </div>`).join('') + '</div>' : `<div class="empty-state"><span class="glyph">🚨</span><p>등록된 재난연락망이 없어요.</p></div>`;
-  out.innerHTML += `<div class="card"><div style="font-weight:800; font-size:14px;">📎 재난연락망 파일</div><p class="muted" style="margin-top:6px;">엑셀·한글(hwp) 파일로 정리된 재난 연락망이 있다면 그대로 올려두고 필요할 때 바로 열어볼 수 있어요.</p>
-    <button class="btn btn-outline btn-block" style="margin-top:10px;" onclick="document.getElementById('disasterContactFileInput').click()">+ 파일 추가</button>
+
+  const files = state.dutyFiles.filter(f=>f.category==='__disaster__');
+  out.innerHTML += `<div class="card">
+    <div style="display:flex; align-items:center; justify-content:space-between;">
+      <div style="font-weight:800; font-size:14px;">📎 재난연락망 파일</div>
+      ${files.length ? `<button class="btn-text" onclick="document.getElementById('disasterContactFileInput').click()">파일 교체</button>` : ''}
+    </div>
+    ${files.length===0
+      ? `<p class="muted" style="margin-top:6px;">엑셀·한글(hwp) 파일로 정리된 재난 연락망이 있다면 그대로 올려두고 필요할 때 바로 볼 수 있어요.</p>
+         <button class="btn btn-outline btn-block" style="margin-top:10px;" onclick="document.getElementById('disasterContactFileInput').click()">+ 파일 추가</button>`
+      : `<div id="disasterContactFileBody" style="margin-top:10px;"><p class="muted" style="text-align:center;">불러오는 중...</p></div>`}
     <input type="file" id="disasterContactFileInput" accept=".xlsx,.xls,.hwp,.hwpx,.pdf,image/*" onchange="handleDisasterContactFile(event)">
-    <div id="disasterContactFileList" style="margin-top:6px;"></div>
   </div>`;
   renderDisasterContactFiles();
 }
 async function renderDisasterContactFiles(){
-  const wrap = document.getElementById('disasterContactFileList');
-  if(!wrap) return;
   const files = state.dutyFiles.filter(f=>f.category==='__disaster__');
-  wrap.innerHTML = files.map(f=>`<div class="file-row"><div class="file-icon">${fileEmoji(f.mimeType, f.displayName)}</div><div style="flex:1;"><div style="font-weight:600; font-size:14px;">${escapeHtml(f.displayName)}</div></div><button class="btn-text" onclick="openFile('${f.id}')">열기</button><button class="btn-danger-text" onclick="deleteFile('${f.id}')">삭제</button></div>`).join('');
+  if(files.length===0) return;
+  if(files.length>1){
+    const wrap = document.getElementById('disasterContactFileBody');
+    if(wrap) wrap.innerHTML = files.map(f=>`<div class="file-row"><div class="file-icon">${fileEmoji(f.mimeType, f.displayName)}</div><div style="flex:1;"><div style="font-weight:600; font-size:14px;">${escapeHtml(f.displayName)}</div></div><button class="btn-text" onclick="openFile('${f.id}')">열기</button><button class="btn-danger-text" onclick="deleteFile('${f.id}')">삭제</button></div>`).join('');
+    return;
+  }
+  const body = document.getElementById('disasterContactFileBody');
+  if(!body) return;
+  await renderFileContentInto(files[0].id, files[0].displayName, body);
+  body.innerHTML += `<div style="text-align:center; margin-top:14px;"><button class="btn-danger-text" onclick="deleteFile('${files[0].id}')">파일 삭제</button></div>`;
 }
 function handleDisasterContactFile(evt){ handleFileGeneric(evt, '__disaster__'); }
 
@@ -1460,8 +1490,8 @@ function handleFileGeneric(evt, forcedCategory){
       state.dutyFiles.push({ id, displayName: file.name, category: forcedCategory, mimeType: file.type, addedAt: Date.now() });
       saveStore();
       showToast(old.length ? '파일을 새 버전으로 갱신했어요.' : '파일을 저장했어요.');
-      if(forcedCategory==='__disaster__') renderDisasterContactFiles();
-      else if(forcedCategory==='__contacts_general__') renderGeneralContactFiles();
+      if(forcedCategory==='__disaster__') renderDisasterContacts();
+      else if(forcedCategory==='__contacts_general__') renderContacts();
     } else {
       document.getElementById('dutyDisplayNameInput').value = file.name;
       document.getElementById('dutyCategorySelect').value = '복무규정';
@@ -1536,27 +1566,28 @@ function deleteFile(id){
     await idbDelete(id);
     saveStore();
     renderDuty();
-    renderGeneralContactFiles();
-    renderDisasterContactFiles();
+    renderContacts();
+    renderDisasterContacts();
   });
 }
 
 /* ============ 파일 미리보기 (전체화면) ============ */
 async function showFilePreview(id, displayName){
-  const blob = await idbGet(id);
-  if(!blob){ showToast('파일을 찾을 수 없어요.'); return; }
   document.getElementById('filePreviewTitle').textContent = displayName || '';
   const body = document.getElementById('filePreviewBody');
   body.innerHTML = '<p class="muted" style="text-align:center; margin-top:40px;">불러오는 중...</p>';
   document.getElementById('filePreviewOverlay').classList.add('open');
-
+  await renderFileContentInto(id, displayName, body);
+}
+async function renderFileContentInto(id, displayName, body){
+  const blob = await idbGet(id);
+  if(!blob){ body.innerHTML = '<p class="muted" style="text-align:center; margin-top:30px;">파일을 찾을 수 없어요.</p>'; return; }
   const mime = blob.mimeType || '';
   const ext = (displayName||'').split('.').pop().toLowerCase();
   const fallbackBtn = `<div style="text-align:center; padding:40px 20px;">
       <p class="muted">이 파일 형식은 화면에서 바로 미리보기가 안 돼요.<br>아래 버튼으로 열어서 확인해주세요.</p>
       <button class="btn btn-primary" style="margin-top:14px;" onclick="openBlobFile('${id}')">파일 열기</button>
     </div>`;
-
   try{
     if(mime.includes('image') || ['jpg','jpeg','png','gif','webp'].includes(ext)){
       body.innerHTML = `<img src="data:${mime||'image/jpeg'};base64,${blob.base64}" style="width:100%; border-radius:12px; display:block;">`;
