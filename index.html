@@ -1357,7 +1357,7 @@ function renderContacts(){
         <div class="row-actions"><button class="btn-text" onclick="openContactSheet('${c.id}')">수정</button><button class="btn-danger-text" onclick="deleteContact('${c.id}')">삭제</button></div>
       </div>
       <button class="call-btn" onclick="confirmCall('${escapeJs(c.phone)}')">📞 전화</button>
-    </div>`).join('') + '</div>' : `<div class="empty-state"><span class="glyph">📞</span><p>등록된 비상연락망이 없어요.</p></div>`;
+    </div>`).join('') + '</div>' : '';
 
   const files = state.dutyFiles.filter(f=>f.category==='__contacts_general__');
   out.innerHTML += `<div class="card">
@@ -1430,7 +1430,7 @@ function renderDisasterContacts(){
         <div class="row-actions"><button class="btn-text" onclick="openDisasterContactSheet('${c.id}')">수정</button><button class="btn-danger-text" onclick="deleteDisasterContact('${c.id}')">삭제</button></div>
       </div>
       <button class="call-btn" onclick="confirmCall('${escapeJs(c.phone)}')">📞 전화</button>
-    </div>`).join('') + '</div>' : `<div class="empty-state"><span class="glyph">🚨</span><p>등록된 재난연락망이 없어요.</p></div>`;
+    </div>`).join('') + '</div>' : '';
 
   const files = state.dutyFiles.filter(f=>f.category==='__disaster__');
   out.innerHTML += `<div class="card">
@@ -1575,27 +1575,54 @@ async function renderFileContentInto(id, displayName, body){
   if(!blob){ body.innerHTML = '<p class="muted" style="text-align:center; margin-top:30px;">파일을 찾을 수 없어요.</p>'; return; }
   const mime = blob.mimeType || '';
   const ext = (displayName||'').split('.').pop().toLowerCase();
+  const isUnsupported = !(mime.includes('image') || ['jpg','jpeg','png','gif','webp'].includes(ext)
+    || mime.includes('pdf') || ext==='pdf' || ext==='xlsx' || ext==='xls' || mime.includes('sheet') || mime.includes('excel')
+    || ext==='hwp' || ext==='hwpx');
   const fallbackBtn = `<div style="text-align:center; padding:40px 20px;">
       <p class="muted">이 파일 형식은 화면에서 바로 미리보기가 안 돼요.<br>아래 버튼으로 열어서 확인해주세요.</p>
       <button class="btn btn-primary" style="margin-top:14px;" onclick="openBlobFile('${id}')">파일 열기</button>
     </div>`;
+  if(isUnsupported){ body.innerHTML = fallbackBtn; return; }
+
+  body.innerHTML = `
+    <div class="zoom-wrap">
+      <div style="display:flex; align-items:center; justify-content:flex-end; gap:8px; margin-bottom:10px;">
+        <button onclick="adjustFileZoom(this,-0.2)" style="width:30px; height:30px; border-radius:9px; border:1px solid var(--border); background:var(--surface); font-size:16px; color:var(--ink); line-height:1;">－</button>
+        <span class="zoom-label" style="font-size:12px; color:var(--ink-soft); min-width:36px; text-align:center;">100%</span>
+        <button onclick="adjustFileZoom(this,0.2)" style="width:30px; height:30px; border-radius:9px; border:1px solid var(--border); background:var(--surface); font-size:16px; color:var(--ink); line-height:1;">＋</button>
+      </div>
+      <div class="zoom-scroll" style="overflow:auto; -webkit-overflow-scrolling:touch;">
+        <div class="zoom-content" style="transform-origin:top left; display:inline-block; min-width:100%;"></div>
+      </div>
+    </div>`;
+  const inner = body.querySelector('.zoom-content');
+
   try{
     if(mime.includes('image') || ['jpg','jpeg','png','gif','webp'].includes(ext)){
-      body.innerHTML = `<img src="data:${mime||'image/jpeg'};base64,${blob.base64}" style="width:100%; border-radius:12px; display:block;">`;
+      inner.innerHTML = `<img src="data:${mime||'image/jpeg'};base64,${blob.base64}" style="max-width:100%; border-radius:12px; display:block;">`;
     } else if(mime.includes('pdf') || ext==='pdf'){
       if(!window.pdfjsLib) throw new Error('pdfjs 없음');
-      await renderPdfPreview(blob.base64, body);
+      await renderPdfPreview(blob.base64, inner);
     } else if(ext==='xlsx' || ext==='xls' || mime.includes('sheet') || mime.includes('excel')){
-      renderExcelPreview(blob.base64, body);
+      renderExcelPreview(blob.base64, inner);
     } else if(ext==='hwp' || ext==='hwpx'){
-      await renderHwpPreview(blob.base64, displayName, body, id);
-    } else {
-      body.innerHTML = fallbackBtn;
+      await renderHwpPreview(blob.base64, displayName, inner, id);
     }
   }catch(e){
     console.error(e);
     body.innerHTML = fallbackBtn;
   }
+}
+function adjustFileZoom(btn, delta){
+  const wrap = btn.closest('.zoom-wrap');
+  if(!wrap) return;
+  const content = wrap.querySelector('.zoom-content');
+  const label = wrap.querySelector('.zoom-label');
+  let scale = parseFloat(content.dataset.scale || '1');
+  scale = Math.min(2.6, Math.max(0.5, +(scale+delta).toFixed(2)));
+  content.dataset.scale = scale;
+  content.style.transform = `scale(${scale})`;
+  label.textContent = Math.round(scale*100)+'%';
 }
 function closeFilePreview(){
   document.getElementById('filePreviewOverlay').classList.remove('open');
