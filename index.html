@@ -519,7 +519,7 @@
   </div>
 </div>
 
-<div class="sheet-overlay" id="confirmOverlay">
+<div class="sheet-overlay" id="confirmOverlay" style="z-index:70;">
   <div class="sheet">
     <div class="sheet-handle"></div>
     <p id="confirmMessage" style="font-size:15.5px; text-align:center; margin:8px 0 18px; font-weight:600;"></p>
@@ -801,7 +801,7 @@ function renderTodaySummaryInto(elId){
         <span style="font-size:13px; font-weight:800; color:var(--ink);">${SHIFT_LABEL[k]}</span>
       </div>
       <div style="display:flex; flex-wrap:wrap; gap:7px; margin-top:7px;">
-        ${namesByCode[k].sort((a,b)=>a.localeCompare(b,'ko')).map(n=>`<span style="background:var(--surface-muted); border-radius:999px; padding:5px 11px; font-size:13.5px;">${escapeHtml(n)}</span>`).join('')}
+        ${namesByCode[k].map(n=>`<span style="background:var(--surface-muted); border-radius:999px; padding:5px 11px; font-size:13.5px;">${escapeHtml(n)}</span>`).join('')}
       </div>
     </div>`).join('');
   el.innerHTML = nameGroups || `<p class="muted" style="margin-top:8px;">오늘 근무 중인 D/E/N 근무자가 없어요.</p>`;
@@ -811,8 +811,7 @@ function renderStaffEmployeeList(){
   if(!sched) return;
   const q = (document.getElementById('staffEmployeeSearch').value||'').trim().toLowerCase();
   const list = sched.employees
-    .filter(e => e.name.toLowerCase().includes(q) || (e.employeeId||'').includes(q))
-    .sort((a,b)=>a.name.localeCompare(b.name,'ko'));
+    .filter(e => e.name.toLowerCase().includes(q) || (e.employeeId||'').includes(q));
   const out = document.getElementById('staffEmployeeListOutput');
   out.innerHTML = list.length
     ? list.map(e=>{
@@ -1162,7 +1161,7 @@ function renderScheduleTablePreview(sched, container){
   const dates = new Set();
   sched.employees.forEach(e=>Object.keys(e.shifts).forEach(d=>dates.add(d)));
   const sortedDates = [...dates].sort();
-  const names = [...sched.employees].sort((a,b)=>a.name.localeCompare(b.name,'ko'));
+  const names = sched.employees;
   let html = '<div class="table-scroll"><table><tr><th class="name-cell">이름</th>' + sortedDates.map(d=>`<th>${parseInt(d.slice(-2),10)}</th>`).join('') + '</tr>';
   names.forEach(emp=>{
     html += `<tr><td class="name-cell">${escapeHtml(emp.name)}</td>` + sortedDates.map(d=>`<td><span class="cal-badge ${shiftClass(emp.shifts[d])}" style="display:inline-flex;">${escapeHtml(emp.shifts[d]||'-')}</span></td>`).join('') + '</tr>';
