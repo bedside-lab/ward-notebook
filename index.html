@@ -1570,7 +1570,7 @@ async function renderGeneralContactFiles(){
   const body = document.getElementById('generalContactFileBody');
   if(!body) return;
   await renderFileContentInto(files[0].id, files[0].displayName, body);
-  body.innerHTML += `<div style="text-align:center; margin-top:14px;"><button class="btn-danger-text" onclick="deleteFile('${files[0].id}')">파일 삭제</button></div>`;
+  body.insertAdjacentHTML('beforeend', `<div style="text-align:center; margin-top:14px;"><button class="btn-danger-text" onclick="deleteFile('${files[0].id}')">파일 삭제</button></div>`);
 }
 function handleGeneralContactFile(evt){ handleFileGeneric(evt, '__contacts_general__'); }
 
@@ -1643,7 +1643,7 @@ async function renderDisasterContactFiles(){
   const body = document.getElementById('disasterContactFileBody');
   if(!body) return;
   await renderFileContentInto(files[0].id, files[0].displayName, body);
-  body.innerHTML += `<div style="text-align:center; margin-top:14px;"><button class="btn-danger-text" onclick="deleteFile('${files[0].id}')">파일 삭제</button></div>`;
+  body.insertAdjacentHTML('beforeend', `<div style="text-align:center; margin-top:14px;"><button class="btn-danger-text" onclick="deleteFile('${files[0].id}')">파일 삭제</button></div>`);
 }
 function handleDisasterContactFile(evt){ handleFileGeneric(evt, '__disaster__'); }
 
@@ -1851,11 +1851,8 @@ function fitZoomToScreen(wrap){
     const naturalHeight = content.offsetHeight || content.scrollHeight || 1;
     wrap.dataset.naturalWidth = naturalWidth;
     wrap.dataset.naturalHeight = naturalHeight;
-    const visibleWidth = scrollEl.clientWidth;
-    let scale = 1;
-    if(naturalWidth > visibleWidth){
-      scale = Math.max(0.3, +(visibleWidth / naturalWidth * 0.98).toFixed(2));
-    }
+    // 손가락으로 자유롭게 확대·축소할 수 있으니, 처음엔 억지로 줄이지 않고 원본 크기(100%)로 보여준다
+    const scale = 1;
     setZoomScale(wrap, scale);
   });
 }
