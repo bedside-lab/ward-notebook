@@ -693,20 +693,11 @@ function openMorePage(name){
   if(name==='duty') renderDuty();
 }
 function openContactsQuick(category, fallbackPage){
-  const files = state.dutyFiles.filter(f=>f.category===category);
-  if(files.length===1){
-    showFilePreview(files[0].id, files[0].displayName);
-  } else {
-    openMorePage(fallbackPage);
-  }
+  // 카테고리 화면 자체가 이제 파일 내용을 바로 보여주고 교체까지 할 수 있어서, 항상 그 화면으로 이동한다
+  openMorePage(fallbackPage);
 }
 function openDutyQuick(){
-  const files = state.dutyFiles.filter(f=>f.category!=='__disaster__' && f.category!=='__contacts_general__');
-  if(files.length===1){
-    showFilePreview(files[0].id, files[0].displayName);
-  } else {
-    openMorePage('duty');
-  }
+  openMorePage('duty');
 }
 
 /* ============ HOME ============ */
@@ -1613,19 +1604,53 @@ function closeFilePreview(){
 function renderExcelPreview(base64, container){
   const wb = XLSX.read(base64, { type:'base64' });
   const sheet = wb.Sheets[wb.SheetNames[0]];
-  const rows = XLSX.utils.sheet_to_json(sheet, { header:1, raw:false, defval:'' })
-    .map(r=>r.map(c=>String(c??'').trim()))
-    .filter(r=>r.some(c=>c!==''));
-  if(rows.length===0){ container.innerHTML = '<p class="muted" style="text-align:center; margin-top:30px;">시트에서 내용을 찾지 못했어요.</p>'; return; }
+  if(!sheet['!ref']){ container.innerHTML = '<p class="muted" style="text-align:center; margin-top:30px;">시트에서 내용을 찾지 못했어요.</p>'; return; }
+  const range = XLSX.utils.decode_range(sheet['!ref']);
+  const merges = sheet['!merges'] || [];
+
+  // 병합된 셀(예: 조직도 형태 파일의 부서/이름 박스)을 rowspan/colspan으로 그대로 살린다
+  const covered = new Set();
+  const mergeAt = {};
+  merges.forEach(m=>{
+    const rs = m.e.r - m.s.r + 1, cs = m.e.c - m.s.c + 1;
+    if(rs>1 || cs>1){
+      mergeAt[`${m.s.r},${m.s.c}`] = { rowspan: rs, colspan: cs };
+      for(let r=m.s.r; r<=m.e.r; r++){
+        for(let c=m.s.c; c<=m.e.c; c++){
+          if(r===m.s.r && c===m.s.c) continue;
+          covered.add(`${r},${c}`);
+        }
+      }
+    }
+  });
+  const getCellText = (r,c) => {
+    const cell = sheet[XLSX.utils.encode_cell({r,c})];
+    if(!cell) return '';
+    return String(cell.w ?? cell.v ?? '').trim();
+  };
+
+  let lastRow=-1, lastCol=-1;
+  for(let r=range.s.r; r<=range.e.r; r++){
+    for(let c=range.s.c; c<=range.e.c; c++){
+      if(getCellText(r,c)!==''){ if(r>lastRow) lastRow=r; if(c>lastCol) lastCol=c; }
+    }
+  }
+  if(lastRow===-1){ container.innerHTML = '<p class="muted" style="text-align:center; margin-top:30px;">시트에서 내용을 찾지 못했어요.</p>'; return; }
 
   const phoneRe = /^0\d{1,2}-?\d{3,4}-?\d{4}$/;
-  const cellHtml = (c) => phoneRe.test(c.replace(/\s/g,'')) ? `<span onclick="confirmCall('${escapeJs(c)}')" style="color:var(--blue); font-weight:700; cursor:pointer;">${escapeHtml(c)}</span>` : escapeHtml(c);
+  const cellHtml = (c) => c && phoneRe.test(c.replace(/\s/g,'')) ? `<span onclick="confirmCall('${escapeJs(c)}')" style="color:var(--blue); font-weight:700; cursor:pointer;">${escapeHtml(c)}</span>` : (c ? escapeHtml(c) : '&nbsp;');
 
-  let html = '<div style="border:1px solid var(--border); border-radius:14px; overflow:hidden; box-shadow:0 3px 12px rgba(27,42,65,.06);"><div class="table-scroll" style="margin:0; padding:0;"><table style="width:100%;">';
-  html += '<tr style="background:var(--surface-muted);">' + rows[0].map(c=>`<th style="text-align:left; padding:10px 12px; font-size:13px; font-weight:800; color:var(--ink); white-space:nowrap; border-bottom:1.5px solid var(--border);">${escapeHtml(c)}</th>`).join('') + '</tr>';
-  rows.slice(1).forEach((row,i)=>{
-    html += `<tr style="background:${i%2? 'var(--surface)':'var(--bg)'};">` + row.map(c=>`<td style="padding:9px 12px; font-size:13.5px; white-space:nowrap; border-bottom:1px solid var(--border);">${cellHtml(c)}</td>`).join('') + '</tr>';
-  });
+  let html = '<div style="border:1px solid var(--border); border-radius:14px; overflow:hidden; box-shadow:0 3px 12px rgba(27,42,65,.06);"><div class="table-scroll" style="margin:0; padding:0;"><table style="width:100%; border-collapse:collapse;">';
+  for(let r=range.s.r; r<=lastRow; r++){
+    html += `<tr style="background:${(r-range.s.r)%2? 'var(--surface)':'var(--bg)'};">`;
+    for(let c=range.s.c; c<=lastCol; c++){
+      if(covered.has(`${r},${c}`)) continue;
+      const span = mergeAt[`${r},${c}`];
+      const attrs = span ? ` rowspan="${span.rowspan}" colspan="${span.colspan}"` : '';
+      html += `<td${attrs} style="padding:9px 12px; font-size:13.5px; white-space:nowrap; border:1px solid var(--border); text-align:center;">${cellHtml(getCellText(r,c))}</td>`;
+    }
+    html += '</tr>';
+  }
   html += '</table></div></div>';
   container.innerHTML = html;
 }
