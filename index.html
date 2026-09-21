@@ -31,6 +31,7 @@
   import { toMarkdown } from "@mdgate/hwp";
   window.__hwpToMarkdown = toMarkdown;
 </script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
   :root{
     --bg:#FAFBFC; --surface:#FFFFFF; --surface-muted:#F1F4F8; --border:#E7EBF0;
@@ -375,6 +376,8 @@
       <p>등록된 일정이 없어요.<br>회의·교육·보고 등 챙길 일정을 등록해두세요.</p>
     </div>
     <button class="btn btn-primary btn-block" style="margin-top:14px;" onclick="openEventSheet()">+ 일정 추가</button>
+    <button class="btn btn-outline btn-block" style="margin-top:10px;" onclick="syncGoogleCalendar()">🔗 구글 캘린더 동기화</button>
+    <p class="muted" id="googleSyncStatus" style="margin-top:8px; text-align:center;"></p>
     <p class="muted" style="margin-top:12px; text-align:center;">이 앱은 별도 서버 없이 무료로 동작해서, 알림이 자동으로 울리지는 않아요. 앱을 열 때마다 홈 화면과 이 탭에서 바로 확인할 수 있어요.</p>
   </section>
 
@@ -440,6 +443,13 @@
     </div>
     <div class="card">
       <p class="muted">아이폰에서는 Safari의 <b>공유 → 홈 화면에 추가</b>로 설치하면 아이콘이 생기고 앱처럼 열려요. 별도 비용이 들지 않아요.</p>
+    </div>
+    <div class="card">
+      <div style="font-weight:800; font-size:15px;">🔗 구글 캘린더 연동</div>
+      <p class="muted" style="margin-top:8px;">본인 구글 계정으로 발급받은 클라이언트 ID를 한 번 등록해두면, 일정 탭에서 언제든 동기화할 수 있어요. 이 값은 서버로 전송되지 않고 이 기기에만 저장돼요.</p>
+      <p class="muted" style="margin-top:6px; color:var(--danger);">※ claude.ai 미리보기 링크에서는 구글 로그인 자체가 안 열려요. GitHub Pages로 배포한 주소에서만 사용할 수 있어요.</p>
+      <div class="field" style="margin-top:10px;"><label>구글 OAuth 클라이언트 ID</label><input id="googleClientIdInput" placeholder="xxxxxxxx.apps.googleusercontent.com"></div>
+      <button class="btn btn-outline btn-block" onclick="saveGoogleClientId()">저장</button>
     </div>
   </section>
 
@@ -548,11 +558,11 @@ const STORE_KEY = 'nmwn_state_v1';
 function loadStore(){
   try{
     const raw = localStorage.getItem(STORE_KEY);
-    const base = { schedules:[], memos:[], events:[], contactsGeneral:[], contactsDisaster:[], dutyFiles:[] };
+    const base = { schedules:[], memos:[], events:[], contactsGeneral:[], contactsDisaster:[], dutyFiles:[], googleClientId:'', googleDeletedIds:[] };
     if(!raw) return base;
     const p = JSON.parse(raw);
     return Object.assign(base, p);
-  }catch(e){ console.error(e); return { schedules:[], memos:[], events:[], contactsGeneral:[], contactsDisaster:[], dutyFiles:[] }; }
+  }catch(e){ console.error(e); return { schedules:[], memos:[], events:[], contactsGeneral:[], contactsDisaster:[], dutyFiles:[], googleClientId:'', googleDeletedIds:[] }; }
 }
 function saveStore(){
   try{ localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
@@ -691,6 +701,7 @@ function openMorePage(name){
   if(name==='contacts') renderContacts();
   if(name==='disaster') renderDisasterContacts();
   if(name==='duty') renderDuty();
+  if(name==='settings') document.getElementById('googleClientIdInput').value = state.googleClientId || '';
 }
 function openContactsQuick(category, fallbackPage){
   // 카테고리 화면 자체가 이제 파일 내용을 바로 보여주고 교체까지 할 수 있어서, 항상 그 화면으로 이동한다
@@ -1204,6 +1215,11 @@ function saveEvent(){
 }
 function deleteEvent(id){
   showConfirm('삭제할까요?', ()=>{
+    const ev = state.events.find(e=>e.id===id);
+    if(ev && ev.googleEventId){
+      if(!state.googleDeletedIds) state.googleDeletedIds = [];
+      state.googleDeletedIds.push(ev.googleEventId);
+    }
     state.events = state.events.filter(e=>e.id!==id);
     saveStore(); renderAgenda();
   });
@@ -1240,6 +1256,166 @@ function renderAgenda(){
       <span class="dday-badge ${dd.cls}">${dd.label}</span>
     </div>`;
   }).join('') + '</div>';
+}
+
+/* ============ 구글 캘린더 양방향 동기화 ============ */
+let googleAccessToken = null;
+let googleTokenClient = null;
+
+function saveGoogleClientId(){
+  const val = document.getElementById('googleClientIdInput').value.trim();
+  state.googleClientId = val;
+  saveStore();
+  googleTokenClient = null; // 새 ID로 다시 초기화되도록
+  showToast(val ? '저장했어요.' : '클라이언트 ID를 지웠어요.');
+}
+function setGoogleSyncStatus(msg){
+  const el = document.getElementById('googleSyncStatus');
+  if(el) el.textContent = msg;
+}
+function ensureGoogleTokenClient(){
+  if(!state.googleClientId){
+    showToast('설정에서 구글 클라이언트 ID를 먼저 등록해주세요.');
+    return null;
+  }
+  if(!window.google || !window.google.accounts || !window.google.accounts.oauth2){
+    showToast('구글 로그인 기능을 이 화면에서는 쓸 수 없어요 (GitHub Pages 주소에서 열어주세요).');
+    return null;
+  }
+  if(!googleTokenClient){
+    googleTokenClient = google.accounts.oauth2.initTokenClient({
+      client_id: state.googleClientId,
+      scope: 'https://www.googleapis.com/auth/calendar.events',
+      callback: ()=>{} // requestAccessToken 호출 시 매번 재지정
+    });
+  }
+  return googleTokenClient;
+}
+function getGoogleAccessToken(){
+  return new Promise((resolve, reject)=>{
+    const client = ensureGoogleTokenClient();
+    if(!client){ reject(new Error('client 없음')); return; }
+    client.callback = (resp)=>{
+      if(resp && resp.access_token){ googleAccessToken = resp.access_token; resolve(resp.access_token); }
+      else reject(new Error('로그인 실패'));
+    };
+    client.requestAccessToken({ prompt: googleAccessToken ? '' : 'consent' });
+  });
+}
+function addDaysIso(dateStr, days){
+  const d = new Date(dateStr+'T00:00:00');
+  d.setDate(d.getDate()+days);
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+function appEventToGoogleBody(ev){
+  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Seoul';
+  const body = { summary: ev.title || '(제목 없음)', description: ev.note || '' };
+  if(ev.startTime){
+    const endTime = ev.endTime || ev.startTime;
+    body.start = { dateTime: `${ev.date}T${ev.startTime}:00`, timeZone: tz };
+    body.end = { dateTime: `${ev.date}T${endTime}:00`, timeZone: tz };
+  } else {
+    body.start = { date: ev.date };
+    body.end = { date: addDaysIso(ev.date, 1) };
+  }
+  return body;
+}
+function googleEventToApp(gev){
+  const isAllDay = !!(gev.start && gev.start.date);
+  const date = isAllDay ? gev.start.date : (gev.start.dateTime||'').slice(0,10);
+  const startTime = isAllDay ? '' : (gev.start.dateTime||'').slice(11,16);
+  const endTime = isAllDay ? '' : (gev.end && gev.end.dateTime ? gev.end.dateTime.slice(11,16) : '');
+  return { title: gev.summary || '(제목 없음)', note: gev.description || '', date, startTime, endTime };
+}
+async function gcalFetch(url, token, opts){
+  const res = await fetch(url, Object.assign({}, opts, { headers: Object.assign({ 'Authorization': 'Bearer '+token, 'Content-Type':'application/json' }, (opts&&opts.headers)||{}) }));
+  if(!res.ok){ const t = await res.text().catch(()=> ''); throw new Error('Google API 오류 '+res.status+' '+t.slice(0,200)); }
+  if(res.status===204) return null;
+  return res.json();
+}
+async function syncGoogleCalendar(){
+  if(!state.googleClientId){ showToast('설정에서 구글 클라이언트 ID를 먼저 등록해주세요.'); return; }
+  if(!window.google || !window.google.accounts || !window.google.accounts.oauth2){
+    showToast('구글 로그인 기능을 이 화면에서는 쓸 수 없어요 (GitHub Pages 주소에서 열어주세요).');
+    return;
+  }
+  setGoogleSyncStatus('구글 로그인 중...');
+  let token;
+  try{ token = googleAccessToken || await getGoogleAccessToken(); }
+  catch(e){ setGoogleSyncStatus(''); showToast('구글 로그인에 실패했어요.'); return; }
+
+  setGoogleSyncStatus('동기화 중...');
+  try{
+    // 0) 앱에서 삭제했던 일정을 구글에서도 삭제
+    if(state.googleDeletedIds && state.googleDeletedIds.length){
+      for(const gid of state.googleDeletedIds){
+        try{ await gcalFetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${gid}`, token, { method:'DELETE' }); }
+        catch(e){ /* 이미 지워졌거나 실패 - 무시하고 계속 */ }
+      }
+      state.googleDeletedIds = [];
+    }
+
+    const timeMin = new Date(Date.now() - 30*86400000).toISOString();
+    const timeMax = new Date(Date.now() + 180*86400000).toISOString();
+    const listUrl = `https://www.googleapis.com/calendar/v3/calendars/primary/events?singleEvents=true&timeMin=${encodeURIComponent(timeMin)}&timeMax=${encodeURIComponent(timeMax)}&maxResults=2500`;
+    let data;
+    try{
+      data = await gcalFetch(listUrl, token);
+    }catch(e){
+      // 토큰 만료 등으로 실패하면 한 번 더 로그인 시도
+      googleAccessToken = null;
+      token = await getGoogleAccessToken();
+      data = await gcalFetch(listUrl, token);
+    }
+    const googleEvents = (data && data.items) || [];
+    const googleById = {};
+    googleEvents.forEach(g=>{ googleById[g.id] = g; });
+
+    let created=0, updated=0, imported=0, removedLocal=0;
+
+    // 1) 앱 → 구글 (새 일정 생성 / 기존 일정 갱신)
+    for(const ev of state.events){
+      if(!ev.googleEventId){
+        try{
+          const res = await gcalFetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', token, {
+            method:'POST', body: JSON.stringify(appEventToGoogleBody(ev))
+          });
+          ev.googleEventId = res.id;
+          created++;
+        }catch(e){ console.error('생성 실패', e); }
+      } else if(googleById[ev.googleEventId]){
+        try{
+          await gcalFetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${ev.googleEventId}`, token, {
+            method:'PUT', body: JSON.stringify(appEventToGoogleBody(ev))
+          });
+          updated++;
+        }catch(e){ console.error('갱신 실패', e); }
+      }
+    }
+
+    // 2) 구글 → 앱 (구글에만 있는 일정은 새로 가져오고, 앱에 연결돼 있었는데 구글에서 지워진 건 앱에서도 삭제)
+    const localGoogleIds = new Set(state.events.map(e=>e.googleEventId).filter(Boolean));
+    googleEvents.forEach(g=>{
+      if(g.status==='cancelled') return;
+      if(!localGoogleIds.has(g.id)){
+        const mapped = googleEventToApp(g);
+        state.events.push(Object.assign({ id:'ev_'+Date.now()+'_'+Math.random().toString(36).slice(2,7), googleEventId: g.id }, mapped));
+        imported++;
+      }
+    });
+    const beforeCount = state.events.length;
+    state.events = state.events.filter(ev => !ev.googleEventId || googleById[ev.googleEventId]);
+    removedLocal = beforeCount - state.events.length;
+
+    saveStore();
+    renderAgenda();
+    setGoogleSyncStatus(`마지막 동기화: ${new Date().toLocaleString('ko-KR')}`);
+    showToast(`동기화 완료 (추가 ${created+imported} · 갱신 ${updated}${removedLocal?` · 삭제 ${removedLocal}`:''})`);
+  }catch(e){
+    console.error(e);
+    setGoogleSyncStatus('');
+    showToast('동기화 중 문제가 발생했어요.');
+  }
 }
 
 /* ============ MEMO (위젯처럼 즉시 쓰고 바로 수정) ============ */
@@ -1463,7 +1639,16 @@ function handleDisasterContactFile(evt){ handleFileGeneric(evt, '__disaster__');
 
 /* ============ DUTY (복무관리) ============ */
 let pendingFile = null;
-function handleDutyFile(evt){ handleFileGeneric(evt, null); }
+let dutyReplaceCategory = null;
+function replaceDutyFile(category){
+  dutyReplaceCategory = category;
+  document.getElementById('dutyFileInput').click();
+}
+function handleDutyFile(evt){
+  const cat = dutyReplaceCategory;
+  dutyReplaceCategory = null;
+  handleFileGeneric(evt, cat || null);
+}
 function handleFileGeneric(evt, forcedCategory){
   const file = evt.target.files[0];
   if(!file) return;
@@ -1472,7 +1657,7 @@ function handleFileGeneric(evt, forcedCategory){
     const base64 = e.target.result.split(',')[1];
     pendingFile = { base64, mimeType: file.type, name: file.name, forcedCategory };
     if(forcedCategory){
-      // 같은 카테고리(비상연락망/재난연락망)에 이미 파일이 있으면 새로 올린 파일로 교체한다
+      // 같은 카테고리(비상연락망/재난연락망/복무관리 카테고리)에 이미 파일이 있으면 새로 올린 파일로 교체한다
       const old = state.dutyFiles.filter(f=>f.category===forcedCategory);
       for(const o of old){ await idbDelete(o.id).catch(()=>{}); }
       state.dutyFiles = state.dutyFiles.filter(f=>f.category!==forcedCategory);
@@ -1483,6 +1668,7 @@ function handleFileGeneric(evt, forcedCategory){
       showToast(old.length ? '파일을 새 버전으로 갱신했어요.' : '파일을 저장했어요.');
       if(forcedCategory==='__disaster__') renderDisasterContacts();
       else if(forcedCategory==='__contacts_general__') renderContacts();
+      else renderDuty();
     } else {
       document.getElementById('dutyDisplayNameInput').value = file.name;
       document.getElementById('dutyCategorySelect').value = '복무규정';
@@ -1527,15 +1713,37 @@ function renderDuty(){
   empty.style.display='none';
   const byCategory = {};
   files.forEach(f=> (byCategory[f.category] = byCategory[f.category]||[]).push(f));
-  out.innerHTML = Object.entries(byCategory).map(([cat, list])=>`
-    <div class="card">
+
+  out.innerHTML = Object.entries(byCategory).map(([cat, list])=>{
+    if(list.length===1){
+      const f = list[0];
+      return `<div class="card">
+        <div style="display:flex; align-items:center; justify-content:space-between;">
+          <div style="font-weight:800; font-size:14px;">📁 ${escapeHtml(cat)}</div>
+          <button class="btn-text" onclick="replaceDutyFile('${escapeJs(cat)}')">파일 교체</button>
+        </div>
+        <div id="dutyFileBody_${f.id}" style="margin-top:10px;"><p class="muted" style="text-align:center;">불러오는 중...</p></div>
+      </div>`;
+    }
+    return `<div class="card">
       <div style="font-weight:800; font-size:14px;">📁 ${escapeHtml(cat)}</div>
       ${list.map(f=>`<div class="file-row"><div class="file-icon">${fileEmoji(f.mimeType, f.displayName)}</div>
         <div style="flex:1;"><div style="font-weight:600; font-size:14px;">${escapeHtml(f.displayName)}</div></div>
         <button class="btn-text" onclick="openFile('${f.id}')">열기</button>
         <button class="btn-danger-text" onclick="deleteFile('${f.id}')">삭제</button>
       </div>`).join('')}
-    </div>`).join('');
+    </div>`;
+  }).join('');
+
+  Object.values(byCategory).forEach(list=>{
+    if(list.length!==1) return;
+    const f = list[0];
+    const body = document.getElementById('dutyFileBody_'+f.id);
+    if(!body) return;
+    renderFileContentInto(f.id, f.displayName, body).then(()=>{
+      body.insertAdjacentHTML('beforeend', `<div style="text-align:center; margin-top:14px;"><button class="btn-danger-text" onclick="deleteFile('${f.id}')">파일 삭제</button></div>`);
+    });
+  });
 }
 async function openBlobFile(id, mimeType){
   const blob = await idbGet(id);
@@ -1586,13 +1794,17 @@ async function renderFileContentInto(id, displayName, body){
 
   body.innerHTML = `
     <div class="zoom-wrap">
-      <div style="display:flex; align-items:center; justify-content:flex-end; gap:8px; margin-bottom:10px;">
-        <button onclick="adjustFileZoom(this,-0.2)" style="width:30px; height:30px; border-radius:9px; border:1px solid var(--border); background:var(--surface); font-size:16px; color:var(--ink); line-height:1;">－</button>
-        <span class="zoom-label" style="font-size:12px; color:var(--ink-soft); min-width:36px; text-align:center;">100%</span>
-        <button onclick="adjustFileZoom(this,0.2)" style="width:30px; height:30px; border-radius:9px; border:1px solid var(--border); background:var(--surface); font-size:16px; color:var(--ink); line-height:1;">＋</button>
+      <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:10px;">
+        <span class="muted" style="font-size:11.5px;">두 손가락으로 오므리고 벌려서 확대할 수 있어요</span>
+        <div style="display:flex; align-items:center; gap:8px; flex-shrink:0;">
+          <button onclick="resetFileZoom(this)" style="width:30px; height:30px; border-radius:9px; border:1px solid var(--border); background:var(--surface); font-size:14px; color:var(--ink); line-height:1;">⟲</button>
+          <button onclick="adjustFileZoom(this,-0.2)" style="width:30px; height:30px; border-radius:9px; border:1px solid var(--border); background:var(--surface); font-size:16px; color:var(--ink); line-height:1;">－</button>
+          <span class="zoom-label" style="font-size:12px; color:var(--ink-soft); min-width:36px; text-align:center;">100%</span>
+          <button onclick="adjustFileZoom(this,0.2)" style="width:30px; height:30px; border-radius:9px; border:1px solid var(--border); background:var(--surface); font-size:16px; color:var(--ink); line-height:1;">＋</button>
+        </div>
       </div>
-      <div class="zoom-scroll" style="overflow:auto; -webkit-overflow-scrolling:touch;">
-        <div class="zoom-content" style="transform-origin:top left; display:inline-block; min-width:100%;"></div>
+      <div class="zoom-scroll" style="overflow:auto; -webkit-overflow-scrolling:touch; max-height:70vh; touch-action:pan-x pan-y;">
+        <div class="zoom-content" style="display:inline-block; min-width:100%;"></div>
       </div>
     </div>`;
   const inner = body.querySelector('.zoom-content');
@@ -1608,21 +1820,65 @@ async function renderFileContentInto(id, displayName, body){
     } else if(ext==='hwp' || ext==='hwpx'){
       await renderHwpPreview(blob.base64, displayName, inner, id);
     }
+    fitZoomToScreen(body.querySelector('.zoom-wrap'));
+    setupPinchZoom(body.querySelector('.zoom-wrap'));
   }catch(e){
     console.error(e);
     body.innerHTML = fallbackBtn;
   }
 }
+function fitZoomToScreen(wrap){
+  if(!wrap) return;
+  const scrollEl = wrap.querySelector('.zoom-scroll');
+  const content = wrap.querySelector('.zoom-content');
+  content.style.zoom = 1;
+  // 표가 화면보다 넓으면, 한 번에 다 보이도록 자동으로 줄여서 시작한다
+  requestAnimationFrame(()=>{
+    const naturalWidth = content.scrollWidth;
+    const visibleWidth = scrollEl.clientWidth;
+    let scale = 1;
+    if(naturalWidth > visibleWidth){
+      scale = Math.max(0.3, +(visibleWidth / naturalWidth * 0.98).toFixed(2));
+    }
+    setZoomScale(wrap, scale);
+  });
+}
+function setZoomScale(wrap, scale){
+  scale = Math.min(4, Math.max(0.2, +scale.toFixed(2)));
+  const content = wrap.querySelector('.zoom-content');
+  const label = wrap.querySelector('.zoom-label');
+  content.style.zoom = scale;
+  content.dataset.scale = scale;
+  if(label) label.textContent = Math.round(scale*100)+'%';
+}
 function adjustFileZoom(btn, delta){
   const wrap = btn.closest('.zoom-wrap');
   if(!wrap) return;
   const content = wrap.querySelector('.zoom-content');
-  const label = wrap.querySelector('.zoom-label');
-  let scale = parseFloat(content.dataset.scale || '1');
-  scale = Math.min(2.6, Math.max(0.5, +(scale+delta).toFixed(2)));
-  content.dataset.scale = scale;
-  content.style.transform = `scale(${scale})`;
-  label.textContent = Math.round(scale*100)+'%';
+  const scale = parseFloat(content.dataset.scale || '1');
+  setZoomScale(wrap, scale + delta);
+}
+function resetFileZoom(btn){
+  const wrap = btn.closest('.zoom-wrap');
+  if(wrap) fitZoomToScreen(wrap);
+}
+function setupPinchZoom(wrap){
+  if(!wrap || wrap.dataset.pinchReady) return;
+  wrap.dataset.pinchReady = '1';
+  const scrollEl = wrap.querySelector('.zoom-scroll');
+  const content = wrap.querySelector('.zoom-content');
+  const dist = (t)=> Math.hypot(t[0].clientX-t[1].clientX, t[0].clientY-t[1].clientY);
+  let startDist=0, startScale=1;
+  scrollEl.addEventListener('touchstart', (e)=>{
+    if(e.touches.length===2){ startDist = dist(e.touches); startScale = parseFloat(content.dataset.scale||'1'); }
+  }, { passive:true });
+  scrollEl.addEventListener('touchmove', (e)=>{
+    if(e.touches.length===2 && startDist>0){
+      e.preventDefault();
+      setZoomScale(wrap, startScale * (dist(e.touches)/startDist));
+    }
+  }, { passive:false });
+  scrollEl.addEventListener('touchend', (e)=>{ if(e.touches.length<2) startDist=0; });
 }
 function closeFilePreview(){
   document.getElementById('filePreviewOverlay').classList.remove('open');
