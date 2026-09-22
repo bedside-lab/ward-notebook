@@ -1852,8 +1852,8 @@ function fitZoomToScreen(wrap){
     const naturalHeight = content.offsetHeight || content.scrollHeight || 1;
     wrap.dataset.naturalWidth = naturalWidth;
     wrap.dataset.naturalHeight = naturalHeight;
-    // 손가락으로 자유롭게 확대·축소할 수 있으니, 처음엔 억지로 줄이지 않고 원본 크기(100%)로 보여준다
-    const scale = 1;
+    // 처음 열 때는 50%로 시작하고, 필요하면 손가락으로 확대할 수 있다
+    const scale = 0.5;
     setZoomScale(wrap, scale);
   });
 }
