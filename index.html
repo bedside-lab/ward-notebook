@@ -425,7 +425,7 @@
 
   <!-- ================= DUTY (복무관리) ================= -->
   <section class="view" id="view-duty">
-    <p class="muted">복무규정, 근태관리 지침, 휴가 안내 같은 문서를 파일로 저장해두고 인터넷 없이 바로 열어볼 수 있어요.</p>
+    <p class="muted" id="dutyIntro">복무규정, 근태관리 지침, 휴가 안내 같은 문서를 파일로 저장해두고 인터넷 없이 바로 열어볼 수 있어요.</p>
     <div id="dutyOutput" style="margin-top:8px;"></div>
     <div id="dutyEmpty" class="empty-state" style="display:none;">
       <span class="glyph">📋</span>
@@ -1546,7 +1546,7 @@ function renderContacts(){
     </div>`).join('') + '</div>' : '';
 
   const files = state.dutyFiles.filter(f=>f.category==='__contacts_general__');
-  out.innerHTML += `<div class="card">
+  out.innerHTML += `<div class="card" style="padding:12px 14px 16px;">
     <div style="display:flex; align-items:center; justify-content:space-between;">
       <div style="font-weight:800; font-size:14px;">📎 비상연락망 파일</div>
       ${files.length ? `<button class="btn-text" onclick="document.getElementById('generalContactFileInput').click()">파일 교체</button>` : ''}
@@ -1619,7 +1619,7 @@ function renderDisasterContacts(){
     </div>`).join('') + '</div>' : '';
 
   const files = state.dutyFiles.filter(f=>f.category==='__disaster__');
-  out.innerHTML += `<div class="card">
+  out.innerHTML += `<div class="card" style="padding:12px 14px 16px;">
     <div style="display:flex; align-items:center; justify-content:space-between;">
       <div style="font-weight:800; font-size:14px;">📎 재난연락망 파일</div>
       ${files.length ? `<button class="btn-text" onclick="document.getElementById('disasterContactFileInput').click()">파일 교체</button>` : ''}
@@ -1719,6 +1719,8 @@ function renderDuty(){
   const files = state.dutyFiles.filter(f=>f.category!=='__disaster__' && f.category!=='__contacts_general__');
   const out = document.getElementById('dutyOutput');
   const empty = document.getElementById('dutyEmpty');
+  const intro = document.getElementById('dutyIntro');
+  if(intro) intro.style.display = files.length ? 'none' : '';
   if(!files.length){ out.innerHTML=''; empty.style.display='block'; return; }
   empty.style.display='none';
   const byCategory = {};
@@ -1727,7 +1729,7 @@ function renderDuty(){
   out.innerHTML = Object.entries(byCategory).map(([cat, list])=>{
     if(list.length===1){
       const f = list[0];
-      return `<div class="card">
+      return `<div class="card" style="padding:12px 14px 16px;">
         <div style="display:flex; align-items:center; justify-content:space-between;">
           <div style="font-weight:800; font-size:14px;">📁 ${escapeHtml(cat)}</div>
           <button class="btn-text" onclick="replaceDutyFile('${escapeJs(cat)}')">파일 교체</button>
@@ -1804,16 +1806,15 @@ async function renderFileContentInto(id, displayName, body){
 
   body.innerHTML = `
     <div class="zoom-wrap">
-      <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:10px;">
-        <span class="muted" style="font-size:11.5px;">두 손가락으로 오므리고 벌려서 확대할 수 있어요</span>
+      <div style="display:flex; align-items:center; justify-content:flex-end; gap:8px; margin-bottom:6px;">
         <div style="display:flex; align-items:center; gap:8px; flex-shrink:0;">
-          <button onclick="resetFileZoom(this)" style="width:30px; height:30px; border-radius:9px; border:1px solid var(--border); background:var(--surface); font-size:14px; color:var(--ink); line-height:1;">⟲</button>
-          <button onclick="adjustFileZoom(this,-0.2)" style="width:30px; height:30px; border-radius:9px; border:1px solid var(--border); background:var(--surface); font-size:16px; color:var(--ink); line-height:1;">－</button>
-          <span class="zoom-label" style="font-size:12px; color:var(--ink-soft); min-width:36px; text-align:center;">100%</span>
-          <button onclick="adjustFileZoom(this,0.2)" style="width:30px; height:30px; border-radius:9px; border:1px solid var(--border); background:var(--surface); font-size:16px; color:var(--ink); line-height:1;">＋</button>
+          <button onclick="resetFileZoom(this)" style="width:28px; height:28px; border-radius:8px; border:1px solid var(--border); background:var(--surface); font-size:13px; color:var(--ink); line-height:1;">⟲</button>
+          <button onclick="adjustFileZoom(this,-0.2)" style="width:28px; height:28px; border-radius:8px; border:1px solid var(--border); background:var(--surface); font-size:15px; color:var(--ink); line-height:1;">－</button>
+          <span class="zoom-label" style="font-size:11.5px; color:var(--ink-soft); min-width:34px; text-align:center;">100%</span>
+          <button onclick="adjustFileZoom(this,0.2)" style="width:28px; height:28px; border-radius:8px; border:1px solid var(--border); background:var(--surface); font-size:15px; color:var(--ink); line-height:1;">＋</button>
         </div>
       </div>
-      <div class="zoom-scroll" style="overflow:auto; -webkit-overflow-scrolling:touch; max-height:70vh; border:1px solid var(--border); border-radius:12px;">
+      <div class="zoom-scroll" style="overflow:auto; -webkit-overflow-scrolling:touch; max-height:calc(100vh - 220px); border:1px solid var(--border); border-radius:12px;">
         <div class="zoom-spacer" style="position:relative;">
           <div class="zoom-content" style="position:absolute; top:0; left:0; transform-origin:top left;"></div>
         </div>
